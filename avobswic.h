@@ -1,7 +1,6 @@
 /* TODO: Write a comment here like other professional projects and stuff */
 
-// TODO: Add config structure, and read_config, write_config to well write and read config duh
-// 			 Refactor the code, it's not really good right now
+// TODO: Refactor the code, it's not really good right now
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,10 +21,6 @@
 #ifndef AVO_CFLAGS
 	#define AVO_CFLAGS ""
 #endif
-
-struct compiler {
-	char* path;
-};
 
 struct source {
 	char* path; // Relative path
@@ -48,7 +43,6 @@ struct Config {
 	char* src_dir;
 	char* include_dir;
 };
-static struct compiler compiler = {""};
 static const char* compilers_paths[] = {"tcc", "gcc", "cc"}; //TODO: Do better than this, not very good/optimized I think
 static const unsigned int compilers_paths_len = 3; // TODO: Do better than this, not good to maintain I think
 static struct Config config = {};
@@ -70,7 +64,7 @@ static void _set_include_dir()
 }
 static void _check_compiler()
 {
-	if(compiler.path[0] == 0)
+	if(config.compile_path == NULL)
 	{
 		printf("Looking for compiler...\n");
 		char* PATH = getenv("PATH");

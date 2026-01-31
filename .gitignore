@@ -1,2 +1,4 @@
 avobswic.ini
 configure
+push_to_github.sh
+.gitignore
