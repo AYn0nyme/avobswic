@@ -45,6 +45,8 @@ typedef struct {
 struct Config {
 	char* compile_path;
 	char* cflags;
+	char* src_dir;
+	char* include_dir;
 };
 static struct compiler compiler = {""};
 static const char* compilers_paths[] = {"tcc", "gcc", "cc"}; //TODO: Do better than this, not very good/optimized I think
@@ -55,6 +57,16 @@ static void _set_cflags()
 	config.cflags = (char*)malloc(strlen(AVO_CFLAGS));
 	strcpy(config.cflags, AVO_CFLAGS);
 	printf("CFLAGS: %s\n", AVO_CFLAGS);
+}
+static void _set_src_dir()
+{
+	config.src_dir = (char*)malloc(strlen(AVO_SRC_DIR));
+	strcpy(config.src_dir, AVO_SRC_DIR);
+}
+static void _set_include_dir()
+{
+	config.include_dir = (char*)malloc(strlen(AVO_INCLUDE_DIR));
+	strcpy(config.include_dir, AVO_INCLUDE_DIR);
 }
 static void _check_compiler()
 {
@@ -72,12 +84,6 @@ static void _check_compiler()
 		char compiler_found = 0;
 		size_t i = 0;
 		// Open /dev/null to write the commands output there (maybe do something else to prevent that)
-		int devnull = open("/dev/null", O_WRONLY);
-		if(devnull==-1)
-		{
-			fprintf(stderr, "Could not open /dev/null");
-			exit(1);
-		}
 		while(*PATH!=0&&!compiler_found)
 		{
 			// TODO: Add Winbloat support
@@ -118,7 +124,6 @@ static void _check_compiler()
 			PATH++;
 			i++;
 		}
-		close(devnull);
 	}
 }
 
@@ -187,6 +192,13 @@ static void _write_config() {
 		strcat(buf, config.cflags);
 		strcat(buf,"\n");
 	}
+	if(strlen(config.src_dir)>0)
+	{
+		buf = (char*)realloc(buf, strlen(config.src_dir)+strlen("SRC_DIR=\n")+strlen(buf)+1);
+		strcat(buf, "SRC_DIR=");
+		strcat(buf, config.src_dir);
+		strcat(buf,"\n");
+	}
 
 	if(write(config_fd, buf, strlen(buf)) == -1)
 	{
@@ -201,6 +213,8 @@ static void _write_config() {
 void AvoConfigure()
 {
 	_set_cflags();
+	_set_src_dir();
+	_set_include_dir();
 	_check_compiler();
 	_write_config();
 }
