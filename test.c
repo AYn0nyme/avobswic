@@ -2,7 +2,7 @@
 
 int main()
 {
-	AvoCmd_t cmd = {0};
+	AvoProject cmd = {0};
 	AvoAddSrc(&cmd, "test.c");
 	return 0;
 }
