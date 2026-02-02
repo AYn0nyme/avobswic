@@ -270,14 +270,14 @@ static void _write_config() {
 	{
 		buf = (char*)realloc(buf, strlen(config.include_dir)+strlen("INCLUDE_DIR=\n")+strlen(buf)+1);
 		strcat(buf, "INCLUDE_DIR=");
-		strcat(buf, config.src_dir);
+		strcat(buf, config.include_dir);
 		strcat(buf,"\n");
 	}
 	if(strlen(config.out_dir)>0)
 	{
 		buf = (char*)realloc(buf, strlen(config.out_dir)+strlen("OUT_DIR=\n")+strlen(buf)+1);
 		strcat(buf, "OUT_DIR=");
-		strcat(buf, config.src_dir);
+		strcat(buf, config.out_dir);
 		strcat(buf,"\n");
 	}
 
@@ -385,10 +385,6 @@ int AvoCompile(AvoProject* prjct)
 		}
 	}
 
-	compiled_sources_len = sizeof(compiled_sources)/sizeof(char*);
-	int compiled_objects;
-	for(size_t i = 0; i < compiled_sources_len; i++) {
-	}
 	return 0;
 }
 
