@@ -88,7 +88,6 @@ static void _check_compiler()
 		unsigned int index = 0;
 		char compiler_found = 0;
 		size_t i = 0;
-		// Open /dev/null to write the commands output there (maybe do something else to prevent that)
 		while(*PATH!=0&&!compiler_found)
 		{
 			// TODO: Add Winbloat support
@@ -341,7 +340,7 @@ int AvoCompile(AvoProject* prjct)
 {
 	_read_config();
 	struct stat build_dir;
-	char** compiled_sources = (char**)malloc(sizeof(char**));
+	char** compiled_sources = NULL;
 	size_t compiled_sources_len = 0;
 	if(stat(config.out_dir, &build_dir) == -1)
 	{
@@ -363,17 +362,14 @@ int AvoCompile(AvoProject* prjct)
 			perror("compile");
 			exit(1);
 		}
+		char output_file_path[strlen(_absolute_path(config.out_dir))+strlen(_absolute_path(prjct->sources[i].path)+1)];
+		strcpy(output_file_path, _absolute_path(config.out_dir));
+		strcat(output_file_path, "/");
+		strcat(output_file_path, _object_name_from_source(_basename(prjct->sources[i].path)));
 		// We're in the forked process
 		if(compiler_pid == 0)
 		{
-			char output_file_path[strlen(_absolute_path(config.out_dir))+strlen(_absolute_path(prjct->sources[i].path)+1)];
-			strcpy(output_file_path, _absolute_path(config.out_dir));
-			strcat(output_file_path, "/");
-			strcat(output_file_path, _object_name_from_source(prjct->sources[i].path));
-			compiled_sources = (char**)realloc(compiled_sources, sizeof(char*)*(compiled_sources_len+1));
-			compiled_sources[compiled_sources_len] = (char*)malloc(strlen(output_file_path));
-			strcpy(compiled_sources[compiled_sources_len], output_file_path);
-			compiled_sources_len++;
+			printf("%s\n", output_file_path);
 			if(execl(config.compile_path, config.cflags, "-c", _absolute_path(prjct->sources[i].path), "-o", output_file_path,  NULL))
 			{
 				perror("compiling");
@@ -381,10 +377,25 @@ int AvoCompile(AvoProject* prjct)
 			}
 		} else {
 			int ret = 0;
+			printf("%s\n", output_file_path);
 			waitpid(compiler_pid, &ret, 0);
+			compiled_sources = (char**)realloc(compiled_sources, sizeof(char*)*(compiled_sources_len+1));
+			compiled_sources[compiled_sources_len] = (char*)malloc(strlen(output_file_path));
+			strcpy(compiled_sources[compiled_sources_len], output_file_path);
+			compiled_sources_len++;
 		}
 	}
 
+	// Add implementations?
+	char* compiled_objects = (char*)malloc(1024 * (compiled_sources_len+0));
+	for(size_t i = 0; i < compiled_sources_len; i++)
+	{
+		if(i==0)strcpy(compiled_objects, compiled_sources[i]);
+		else strcat(compiled_objects, compiled_sources[i]);
+		if(i+1<compiled_sources_len)
+			strcat(compiled_objects, " ");
+		printf("%s\n", compiled_sources[i]);
+	}
 	return 0;
 }
 
