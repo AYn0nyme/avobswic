@@ -1,6 +1,8 @@
 /* TODO: Write a comment here like other professional projects and stuff */
 
 // TODO: Refactor the code, it's not really good right now
+// TODO: Prevent writing default config
+// TODO: AvoCompile();
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,27 +23,31 @@
 #ifndef AVO_CFLAGS
 	#define AVO_CFLAGS ""
 #endif
+#ifndef AVO_OUT_DIR
+	#define AVO_OUT_DIR "bin"
+#endif
 
 struct source {
-	char* path; // Relative path
-	char* output; // Output object
+	char* path  ; // Relative path
 	char* libs[]; // Optional libraries, like -lm for math.h
 };
 struct impl {
-	char* path; // Relative path
-	char* output; // Output object
+	char* path  ; // Relative path
 	char* libs[]; // Optional libraries, like -lm for math.h
 };
 typedef struct {
-	char* output; // Binary output
-	struct source* sources;
-	size_t sources_len;
+	char*  output               ; // Binary output
+	struct source* sources      ; // Source files
+	size_t sources_len          ; // Length of source files
+	struct impl* implementations; // Implementations of header files (idk...)
+	size_t implementations_len  ; // Length of implementations of header files
 } AvoProject;
 struct Config {
-	char* compile_path;
-	char* cflags;
-	char* src_dir;
-	char* include_dir;
+	char* compile_path; // Compiler path TODO: rename it to compiler_path
+	char* cflags      ; // The CFLAGS for each build
+	char* src_dir     ; // Src directory
+	char* include_dir ; // Include directory
+	char* out_dir     ; // Output directory
 };
 static const char* compilers_paths[] = {"tcc", "gcc", "cc"}; //TODO: Do better than this, not very good/optimized I think
 static const unsigned int compilers_paths_len = 3; // TODO: Do better than this, not good to maintain I think
@@ -61,6 +67,11 @@ static void _set_include_dir()
 {
 	config.include_dir = (char*)malloc(strlen(AVO_INCLUDE_DIR));
 	strcpy(config.include_dir, AVO_INCLUDE_DIR);
+}
+static void _set_out_dir()
+{
+	config.out_dir = (char*)malloc(strlen(AVO_OUT_DIR));
+	strcpy(config.out_dir, AVO_OUT_DIR);
 }
 static void _check_compiler()
 {
@@ -146,17 +157,80 @@ static void _read_config()
 		perror("read_config");
 		exit(3);
 	}
+	unsigned int cursor = 0;
 	for(size_t i = 0; i < config_file_bsize; i++)
 	{
-		if(buf[i]=='=')
+		char* key = NULL;
+		char* value = NULL;
+		if (buf[i]=='=')
 		{
-			char *key = strndup(buf, i);
-			char *value = buf+i+1;
-			if(!strcmp(key, "COMPILER_PATH"))
+			key = strndup(buf+cursor, i-cursor);
+			if(i+1<config_file_bsize)
+				cursor = i+1;
+			for(size_t j = i; j < config_file_bsize; j++)
 			{
-				config.compile_path = strdup(value);
+				if (buf[j] == '\n' || buf[j] == -99)
+				{
+					value = strndup(buf+cursor, j-cursor);
+
+					if(!strcmp(key,"COMPILER_PATH"))
+					{
+						config.compile_path = (char*)malloc(strlen(value));
+						strcpy(config.compile_path, value);
+					}
+					if(!strcmp(key,"CFLAGS"))
+					{
+						config.cflags = (char*)malloc(strlen(value));
+						strcpy(config.cflags, value);
+					}
+					if(!strcmp(key,"SRC_DIR"))
+					{
+						config.src_dir = (char*)malloc(strlen(value));
+						strcpy(config.src_dir, value);
+					}
+					if(!strcmp(key,"OUT_DIR"))
+					{
+						config.out_dir = (char*)malloc(strlen(value));
+						strcpy(config.out_dir, value);
+					}
+					if(!strcmp(key,"INCLUDE_DIR"))
+					{
+						config.include_dir = (char*)malloc(strlen(value));
+						strcpy(config.include_dir, value);
+					}
+					if(j+1<config_file_bsize)
+						i=j+1;
+					if(j+1<config_file_bsize)
+						cursor=j+1;
+					break;
+				}
 			}
 		}
+	}
+	if(config.compile_path == NULL)
+	{
+		fprintf(stderr, "Compiler not found.\n");
+		exit(4);
+	}
+	if(config.cflags == NULL)
+	{
+		config.cflags = (char*)malloc(strlen(AVO_CFLAGS));
+		strcpy(config.cflags, AVO_CFLAGS);
+	}
+	if(config.src_dir == NULL)
+	{
+		config.src_dir = (char*)malloc(strlen(AVO_SRC_DIR));
+		strcpy(config.src_dir, AVO_SRC_DIR);
+	}
+	if(config.out_dir == NULL)
+	{
+		config.out_dir = (char*)malloc(strlen(AVO_OUT_DIR));
+		strcpy(config.out_dir, AVO_OUT_DIR);
+	}
+	if(config.include_dir == NULL)
+	{
+		config.include_dir = (char*)malloc(strlen(AVO_INCLUDE_DIR));
+		strcpy(config.include_dir, AVO_INCLUDE_DIR);
 	}
 	close(config_fd);
 }
@@ -185,11 +259,24 @@ static void _write_config() {
 		strcat(buf, "CFLAGS=");
 		strcat(buf, config.cflags);
 		strcat(buf,"\n");
-	}
-	if(strlen(config.src_dir)>0)
+	}	if(strlen(config.src_dir)>0)
 	{
 		buf = (char*)realloc(buf, strlen(config.src_dir)+strlen("SRC_DIR=\n")+strlen(buf)+1);
 		strcat(buf, "SRC_DIR=");
+		strcat(buf, config.src_dir);
+		strcat(buf,"\n");
+	}
+	if(strlen(config.include_dir)>0)
+	{
+		buf = (char*)realloc(buf, strlen(config.include_dir)+strlen("INCLUDE_DIR=\n")+strlen(buf)+1);
+		strcat(buf, "INCLUDE_DIR=");
+		strcat(buf, config.src_dir);
+		strcat(buf,"\n");
+	}
+	if(strlen(config.out_dir)>0)
+	{
+		buf = (char*)realloc(buf, strlen(config.out_dir)+strlen("OUT_DIR=\n")+strlen(buf)+1);
+		strcat(buf, "OUT_DIR=");
 		strcat(buf, config.src_dir);
 		strcat(buf,"\n");
 	}
@@ -202,6 +289,10 @@ static void _write_config() {
 	close(config_fd);
 }
 
+static char* _basename(char*);
+static char* _absolute_path(char*);
+static char* _object_name_from_source(char*);
+
 
 // Configure some options
 void AvoConfigure()
@@ -209,12 +300,129 @@ void AvoConfigure()
 	_set_cflags();
 	_set_src_dir();
 	_set_include_dir();
+	_set_out_dir();
 	_check_compiler();
 	_write_config();
+}
+
+void AvoSetOutput(AvoProject* prjct, char* bin_name)
+{
+	prjct->output = (char*)malloc(strlen(bin_name));
+	strcpy(prjct->output, bin_name);
 }
 
 // path is the relative path from the src dir.
 void AvoAddSrc(AvoProject* prjct, char* path, ...)
 {
-	// Nothing
+	if(prjct->sources == NULL)
+	{
+		prjct->sources = (struct source*)malloc(sizeof(struct source*));
+		prjct->sources_len = 0;
+	}
+	struct stat file_stat;
+	char file_path[strlen(path)+strlen(AVO_SRC_DIR)+1];
+	strcpy(file_path, AVO_SRC_DIR);
+	strcat(file_path, "/");
+	strcat(file_path, path);
+	if(stat(file_path, &file_stat) == -1)
+	{
+		perror("add_source");
+		exit(1);
+	}
+	prjct->sources = (struct source*)realloc(prjct->sources, sizeof(struct source*)*(prjct->sources_len+2));
+	struct source source_file;
+	source_file.path = (char*)malloc(strlen(file_path)+1);
+	strcpy(source_file.path, file_path);
+	prjct->sources[prjct->sources_len] = source_file;
+	prjct->sources_len++;
+}
+
+int AvoCompile(AvoProject* prjct)
+{
+	_read_config();
+	struct stat build_dir;
+	char** compiled_sources = (char**)malloc(sizeof(char**));
+	size_t compiled_sources_len = 0;
+	if(stat(config.out_dir, &build_dir) == -1)
+	{
+		if(errno == ENOENT)
+		{
+			mkdir(config.out_dir, 0777);
+		} else {
+			perror("out_dir opening");
+			exit(3);
+		}
+	}
+	for(size_t i = 0; i < prjct->sources_len; i++)
+	{
+		pid_t compiler_pid;
+		compiler_pid = fork();
+		// Error
+		if(compiler_pid < 0)
+		{
+			perror("compile");
+			exit(1);
+		}
+		// We're in the forked process
+		if(compiler_pid == 0)
+		{
+			char output_file_path[strlen(_absolute_path(config.out_dir))+strlen(_absolute_path(prjct->sources[i].path)+1)];
+			strcpy(output_file_path, _absolute_path(config.out_dir));
+			strcat(output_file_path, "/");
+			strcat(output_file_path, _object_name_from_source(prjct->sources[i].path));
+			compiled_sources = (char**)realloc(compiled_sources, sizeof(char*)*(compiled_sources_len+1));
+			compiled_sources[compiled_sources_len] = (char*)malloc(strlen(output_file_path));
+			strcpy(compiled_sources[compiled_sources_len], output_file_path);
+			compiled_sources_len++;
+			if(execl(config.compile_path, config.cflags, "-c", _absolute_path(prjct->sources[i].path), "-o", output_file_path,  NULL))
+			{
+				perror("compiling");
+				exit(2);
+			}
+		} else {
+			int ret = 0;
+			waitpid(compiler_pid, &ret, 0);
+		}
+	}
+
+	compiled_sources_len = sizeof(compiled_sources)/sizeof(char*);
+	int compiled_objects;
+	for(size_t i = 0; i < compiled_sources_len; i++) {
+	}
+	return 0;
+}
+
+static char* _basename(char*s)
+{
+	if(s==NULL)return 0;
+	unsigned int i=0;
+	unsigned int lastSlashIndex = 0;
+	char* t = strdup(s);
+	while(*t != 0)
+	{
+		if(*t == '/')lastSlashIndex=i;
+		i++;
+		t++;
+	}
+	if(lastSlashIndex!=0)return s+(lastSlashIndex+1);
+	return s;
+}
+
+static char* _absolute_path(char*s)
+{
+	if(s==NULL)return 0;
+	char* buf = (char*)malloc(4096*2);
+	getcwd(buf, 4096*2);
+	buf = (char*)realloc(buf, strlen(buf)+strlen(_basename(s))+1);
+	strcat(buf, "/");
+	strcat(buf, _basename(strdup(s)));
+	return buf;
+}
+
+static char* _object_name_from_source(char*s)
+{
+	if(s==NULL)return 0;
+	char* t = strndup(s, strlen(s)-1);
+	strcat(t, "o");
+	return t;
 }
