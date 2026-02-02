@@ -9,4 +9,8 @@ be*C*ause (funny right haha)
 Soon...
 
 # Roadmap
-- [ ] Be able to compile something
+- [x] Be able to compile something
+- [ ] Add library support
+- [ ] Add static building?
+- [ ] Add implementation support
+- [ ] Add debug if using gcc? (not sure about this one...)
