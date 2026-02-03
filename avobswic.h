@@ -320,7 +320,7 @@ void AvoAddSrc(AvoProject* prjct, char* path, ...)
 	strcat(file_path, path);
 	if(stat(file_path, &file_stat) == -1)
 	{
-		perror("add_source");
+		perror(file_path);
 		exit(1);
 	}
 	prjct->sources = (struct source*)realloc(prjct->sources, sizeof(struct source*)*(prjct->sources_len+2));
@@ -334,6 +334,11 @@ void AvoAddSrc(AvoProject* prjct, char* path, ...)
 int AvoCompile(AvoProject* prjct)
 {
 	_read_config();
+	if(prjct->sources_len==0)
+	{
+		printf("Nothing to compile.\nExiting...\n");
+		exit(0);
+	}
 	struct stat build_dir;
 	char** compiled_sources = NULL;
 	size_t compiled_sources_len = 0;
@@ -367,11 +372,11 @@ int AvoCompile(AvoProject* prjct)
 			char** argv = (char**)malloc(sizeof(char*)*5);
 			size_t argc = 0;
 			/* = { */
-			/* 	config.compile_path, */
-			/* 	"-c", */
-			/* 	_absolute_path(prjct->sources[i].path), */
-			/* 	"-o", */
-			/* 	output_file_path, */
+			/*	config.compile_path, */
+			/*	"-c", */
+			/*	_absolute_path(prjct->sources[i].path), */
+			/*	"-o", */
+			/*	output_file_path, */
 			/* }; */
 			argv[0] = config.compile_path;
 			argv[1] = "-c";
@@ -411,6 +416,7 @@ int AvoCompile(AvoProject* prjct)
 		} else {
 			int ret = 0;
 			waitpid(compiler_pid, &ret, 0);
+			if(ret != 0)exit(33);
 			compiled_sources = (char**)realloc(compiled_sources, sizeof(char*)*(compiled_sources_len+1));
 			compiled_sources[compiled_sources_len] = (char*)malloc(strlen(output_file_path));
 			strcpy(compiled_sources[compiled_sources_len], output_file_path);
@@ -420,14 +426,24 @@ int AvoCompile(AvoProject* prjct)
 	}
 
 	// Add implementations?
-	char* compiled_objects = (char*)malloc(1024 * (compiled_sources_len+0));
+	char** argv = (char**)malloc(sizeof(char*));
+	argv[0] = config.compile_path;
+	size_t argc = 1;
 	for(size_t i = 0; i < compiled_sources_len; i++)
 	{
-		if(i==0)strcpy(compiled_objects, compiled_sources[i]);
-		else strcat(compiled_objects, compiled_sources[i]);
-		if(i+1<compiled_sources_len)
-			strcat(compiled_objects, " ");
+		argv = (char**)realloc(argv, sizeof(char*)*(argc+1));
+		argv[argc] = strdup(compiled_sources[i]);
+		argc++;
 	}
+	argc+=3;
+	argv = (char**)realloc(argv, sizeof(char*)*(argc));
+	argv[argc-3] = strdup("-o");
+	char project_output[strlen(prjct->output)+strlen(_absolute_path(config.out_dir))+1];
+	strcpy(project_output, _absolute_path(config.out_dir));
+	strcat(project_output, "/");
+	strcat(project_output, strdup(prjct->output));
+	argv[argc-2] = strdup(project_output);
+	argv[argc-1] = NULL;
 
 	pid_t compiler_pid = fork();
 	if(compiler_pid<0)
@@ -437,11 +453,7 @@ int AvoCompile(AvoProject* prjct)
 	}
 	else if(compiler_pid == 0)
 	{
-		char project_output[strlen(prjct->output)+strlen(_absolute_path(config.out_dir))+1];
-		strcpy(project_output, _absolute_path(config.out_dir));
-		strcat(project_output, "/");
-		strcat(project_output, strdup(prjct->output));
-		if(execl(config.compile_path, config.compile_path, compiled_objects, "-o", project_output, NULL))
+		if(execv(config.compile_path, argv))
 		{
 			perror("assembling objects");
 			exit(4);
