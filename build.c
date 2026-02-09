@@ -1,9 +1,9 @@
 #include "avobswic.h"
 
-int main()
+int main(int argc, char* argv[])
 {
-	AvoProject cmd = {};
+	AvoProject cmd = {0};
 	AvoSetOutput(&cmd, "hello");
-	AvoAddSrc(&cmd, "main.c");
+	AvoAddSrc(&cmd, "main.c", "x11", NULL);
 	AvoCompile(&cmd);
 }

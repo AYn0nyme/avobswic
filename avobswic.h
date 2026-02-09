@@ -3,9 +3,11 @@
 // TODO: Refactor the code, it's not really good right now
 // TODO: Prevent writing default config
 // TODO: AvoCompile();
+// TODO: Add Compile flags
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
@@ -26,6 +28,10 @@
 #ifndef AVO_OUT_DIR
 	#define AVO_OUT_DIR "bin"
 #endif
+
+/* Set future AVO_FLAGS here */
+ 
+/* */
 
 struct source {
 	char* path  ; // Relative path
@@ -52,9 +58,14 @@ struct Config {
 static const char* compilers_paths[] = {"tcc", "gcc", "cc"}; //TODO: Do better than this, not very good/optimized I think
 static const unsigned int compilers_paths_len = 3; // TODO: Do better than this, not good to maintain I think
 static struct Config config = {};
+static int _min(int x, int y)
+{
+	if(x>y)return y;
+	return x;
+}
 static void _set_cflags()
 {
-	config.cflags = (char*)malloc(strlen(AVO_CFLAGS));
+	config.cflags = (char*)malloc(_min(strlen(AVO_CFLAGS), 1));
 	strcpy(config.cflags, AVO_CFLAGS);
 	printf("CFLAGS: %s\n", AVO_CFLAGS);
 }
@@ -208,7 +219,7 @@ static void _read_config()
 	}
 	if(config.cflags == NULL)
 	{
-		config.cflags = (char*)malloc(strlen(AVO_CFLAGS));
+		config.cflags = (char*)malloc(_min(strlen(AVO_CFLAGS), 1));
 		strcpy(config.cflags, AVO_CFLAGS);
 	}
 	if(config.src_dir == NULL)
@@ -283,9 +294,9 @@ static void _write_config() {
 	close(config_fd);
 }
 
-static char* _basename(char*);
-static char* _absolute_path(char*);
-static char* _object_name_from_source(char*);
+static const char* _basename(const char*);
+static const char* _absolute_path(const char*);
+static char* _object_name_from_source(const char*);
 
 
 // Configure some options
@@ -299,23 +310,25 @@ void AvoConfigure()
 	_write_config();
 }
 
-void AvoSetOutput(AvoProject* prjct, char* bin_name)
+void AvoSetOutput(AvoProject* prjct, const char* bin_name)
 {
-	prjct->output = (char*)malloc(strlen(bin_name));
-	strcpy(prjct->output, bin_name);
+	prjct->output = strdup(bin_name);
 }
 
-// path is the relative path from the src dir.
+// path is the relative path from the src dir. the other arguments are required librairies, NULL-terminated
 void AvoAddSrc(AvoProject* prjct, char* path, ...)
 {
+	_read_config();
+	va_list libs;
+	va_start(libs, path);
 	if(prjct->sources == NULL)
 	{
 		prjct->sources = (struct source*)malloc(sizeof(struct source*));
 		prjct->sources_len = 0;
 	}
 	struct stat file_stat;
-	char file_path[strlen(path)+strlen(AVO_SRC_DIR)+1];
-	strcpy(file_path, AVO_SRC_DIR);
+	char file_path[strlen(path)+strlen(config.src_dir)+2];
+	strcpy(file_path, config.src_dir);
 	strcat(file_path, "/");
 	strcat(file_path, path);
 	if(stat(file_path, &file_stat) == -1)
@@ -362,25 +375,23 @@ int AvoCompile(AvoProject* prjct)
 			perror("compile");
 			exit(1);
 		}
-		char output_file_path[strlen(_absolute_path(config.out_dir))+strlen(_absolute_path(prjct->sources[i].path)+1)];
-		strcpy(output_file_path, _absolute_path(config.out_dir));
+		char* output_file_path = (char*)malloc(strlen(_absolute_path(_basename(config.out_dir)))+strlen(_absolute_path(prjct->sources[i].path)+2));
+		strcpy(output_file_path, _absolute_path(_basename(config.out_dir)));
 		strcat(output_file_path, "/");
 		strcat(output_file_path, _object_name_from_source(_basename(prjct->sources[i].path)));
+
+		char file_path[strlen(_basename(prjct->sources[i].path))+strlen(config.src_dir)+2];
+		strcpy(file_path, config.src_dir);
+		strcat(file_path, "/");
+		strcat(file_path, _basename(prjct->sources[i].path));
 		// We're in the forked process
 		if(compiler_pid == 0)
 		{
 			char** argv = (char**)malloc(sizeof(char*)*5);
 			size_t argc = 0;
-			/* = { */
-			/*	config.compile_path, */
-			/*	"-c", */
-			/*	_absolute_path(prjct->sources[i].path), */
-			/*	"-o", */
-			/*	output_file_path, */
-			/* }; */
 			argv[0] = config.compile_path;
 			argv[1] = "-c";
-			argv[2] = _absolute_path(prjct->sources[i].path);
+			argv[2] = strdup(_absolute_path(file_path));
 			argv[3] = "-o";
 			argv[4] = output_file_path;
 			argc=5;
@@ -392,13 +403,17 @@ int AvoCompile(AvoProject* prjct)
 			else
 			{
 				unsigned int cursor = 0;
-				for(size_t j = 0; j < strlen(config.cflags)+1; j++)
+				size_t cflags_len = strlen(config.cflags);
+				for(size_t j = 0; j < cflags_len+1; j++)
 				{
 					if(config.cflags[j] == ' ' || config.cflags[j] == 0)
 					{
-						argv = (char**)realloc(argv, sizeof(char*)*(argc+1));
-						argv[argc] = strndup(config.cflags+cursor, j-cursor);
-						if(j+1<strlen(config.cflags)+1)
+						if(j>cursor)
+						{
+							argv = (char**)realloc(argv, sizeof(char*)*(argc+1));
+							argv[argc] = strndup(config.cflags+cursor, j-cursor);
+						}
+						if(j+1<cflags_len+1)
 							cursor=j+1;
 						else
 							cursor = j;
@@ -416,29 +431,25 @@ int AvoCompile(AvoProject* prjct)
 		} else {
 			int ret = 0;
 			waitpid(compiler_pid, &ret, 0);
-			if(ret != 0)exit(33);
+			if(!WIFEXITED(ret) || WEXITSTATUS(ret) != 0)exit(33);
 			compiled_sources = (char**)realloc(compiled_sources, sizeof(char*)*(compiled_sources_len+1));
-			compiled_sources[compiled_sources_len] = (char*)malloc(strlen(output_file_path));
-			strcpy(compiled_sources[compiled_sources_len], output_file_path);
+			compiled_sources[compiled_sources_len] = strdup(output_file_path);
 			compiled_sources_len++;
-			memset(output_file_path,0,strlen(output_file_path));
 		}
 	}
 
 	// Add implementations?
-	char** argv = (char**)malloc(sizeof(char*));
+	int argc = compiled_sources_len+4;
+	char** argv = (char**)malloc(sizeof(char*)*argc);
 	argv[0] = config.compile_path;
-	size_t argc = 1;
+	size_t index = 1;
 	for(size_t i = 0; i < compiled_sources_len; i++)
 	{
-		argv = (char**)realloc(argv, sizeof(char*)*(argc+1));
-		argv[argc] = strdup(compiled_sources[i]);
-		argc++;
+		argv[index] = strdup(compiled_sources[i]);
+		index++;
 	}
-	argc+=3;
-	argv = (char**)realloc(argv, sizeof(char*)*(argc));
 	argv[argc-3] = strdup("-o");
-	char project_output[strlen(prjct->output)+strlen(_absolute_path(config.out_dir))+1];
+	char project_output[strlen(prjct->output)+strlen(_absolute_path(config.out_dir))+2];
 	strcpy(project_output, _absolute_path(config.out_dir));
 	strcat(project_output, "/");
 	strcat(project_output, strdup(prjct->output));
@@ -471,37 +482,50 @@ int AvoCompile(AvoProject* prjct)
 	return 0;
 }
 
-static char* _basename(char*s)
+// TODO: Write this, without using AVO itself (unfortunately)
+/* void AvoRecompileMyself(int argc, char* argv[]) */
+/* { */
+/* 	if(argc == 0) { */
+/* 		fprintf(stderr, "No argv[0].\n"); */
+/* 		exit(69); */
+/* 	} */
+/* 	AvoProject build; */
+/* 	AvoAddSrc(&build, argv[0]); */
+/* 	AvoSetOutput(&build, "build"); */
+/* 	AvoCompile(&build); */
+/* 	char* runargv[] = { */
+/* 		argv[0], */
+/* 		NULL */
+/* 	}; */
+/* 	execv(argv[0], runargv); */
+/* } */
+
+static const char* _basename(const char*s)
 {
 	if(s==NULL)return 0;
-	unsigned int i=0;
-	unsigned int lastSlashIndex = 0;
-	char* t = strdup(s);
-	while(*t != 0)
-	{
-		if(*t == '/')lastSlashIndex=i;
-		i++;
-		t++;
-	}
-	if(lastSlashIndex!=0)return s+(lastSlashIndex+1);
+	for(size_t i = 0; i < strlen(s);i++)
+		if(s[i]=='/')return strndup(s+i+1, strlen(s)-i);
 	return s;
 }
 
-static char* _absolute_path(char*s)
+
+static const char* _absolute_path(const char*s)
 {
 	if(s==NULL)return 0;
 	char* buf = (char*)malloc(4096*2);
 	getcwd(buf, 4096*2);
-	buf = (char*)realloc(buf, strlen(buf)+strlen(_basename(s))+1);
+	buf = (char*)realloc(buf, strlen(buf)+strlen(s)+2);
 	strcat(buf, "/");
-	strcat(buf, _basename(strdup(s)));
+	strcat(buf, strdup(s));
 	return buf;
 }
 
-static char* _object_name_from_source(char*s)
+static char* _object_name_from_source(const char*s)
 {
-	if(s==NULL)return 0;
-	char* t = strndup(s, strlen(s)-1);
-	strcat(t, "o");
+	if(!s)return 0;
+	size_t s_len = strlen(s);
+	char* t = (char*)malloc(s_len+1);
+	memcpy(t,s,s_len+1);
+	t[s_len-1] = 'o';
 	return t;
 }
